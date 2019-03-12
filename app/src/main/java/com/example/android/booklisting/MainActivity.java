@@ -1,5 +1,8 @@
 package com.example.android.booklisting;
 
+import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
@@ -7,7 +10,9 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.TextView;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -30,8 +35,15 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String BASE_URL = "https://www.googleapis.com/books/v1/volumes?maxResults=7&q=";
 
-    /** Adapter for the list of earthquakes */
+    /**
+     * Adapter for the list of Books
+     */
     private BookAdapter mAdapter;
+
+    /**
+     * Empty Text View
+     */
+    private TextView mEmptyStateTextView;
 
 
     @Override
@@ -39,34 +51,48 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        final EditText searchText = (EditText)findViewById(R.id.search_view);
-        Button search = (Button)findViewById(R.id.search_button);
+        ConnectivityManager cm =
+                (ConnectivityManager) getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
 
-        search.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                String query = searchText.getText().toString().replace("","+");
-                String BOOK_URL = BASE_URL + query;
+        final NetworkInfo activeNetwork = cm.getActiveNetworkInfo();
 
-                // Kick off an {@link AsyncTask} to perform the network request
-                BookAsyncTask task = new BookAsyncTask();
-                task.execute(BOOK_URL);
-            }
-        });
         // Find a reference to the {@link ListView} in the layout
-        final List<Book> books = new ArrayList<Book>();
-
         ListView bookListView = (ListView) findViewById(R.id.list);
 
-        // Create a new adapter that takes an empty list of earthquakes as input
-        mAdapter = new BookAdapter(this,books);
+        // Create a new adapter that takes an empty list of books as input
+        mAdapter = new BookAdapter(this, new ArrayList<Book>());
 
         // Set the adapter on the {@link ListView}
         // so the list can be populated in the user interface
         bookListView.setAdapter(mAdapter);
 
+        mEmptyStateTextView = (TextView) findViewById(R.id.empty_view);
+        bookListView.setEmptyView(mEmptyStateTextView);
+
+        final EditText searchText = (EditText) findViewById(R.id.search_view);
+        Button search = (Button) findViewById(R.id.search_button);
+
+        search.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (activeNetwork != null &&
+                        activeNetwork.isConnectedOrConnecting()) {
+                    String query = searchText.getText().toString().replaceAll(" ", "+");
+                    String BOOK_URL = BASE_URL + query;
+
+                    // Kick off an {@link AsyncTask} to perform the network request
+                    BookAsyncTask task = new BookAsyncTask();
+                    task.execute(BOOK_URL);
+                } else {
+                    mEmptyStateTextView.setText("No Internet Connection");
+
+                }
+
+            }
+        });
 
     }
+
     /**
      * {@link AsyncTask} to perform the network request on a background thread, and then
      * update the UI with the query books in the response.
@@ -74,7 +100,7 @@ public class MainActivity extends AppCompatActivity {
     private class BookAsyncTask extends AsyncTask<String, Void, List<Book>> {
 
         @Override
-        protected List<Book> doInBackground(String...urls) {
+        protected List<Book> doInBackground(String... urls) {
             // Create URL object
             URL url = createUrl(urls[0]);
 
@@ -86,28 +112,33 @@ public class MainActivity extends AppCompatActivity {
                 // TODO Handle the IOException
             }
 
-            // Extract relevant fields from the JSON response and create an {@link Event} object
+            // Extract relevant fields from the JSON response and create an {@link Book} object
             List<Book> books = extractBookFromJson(jsonResponse);
 
-            // Return the {@link Event} object as the result fo the {@link TsunamiAsyncTask}
+            // Return the {@link Book} object as the result for the {@link BookAsyncTask}
             return books;
         }
 
         /**
-         * Update the screen with the given earthquake (which was the result of the
+         * Update the screen with the given book (which was the result of the
          * {@link }).
          */
         @Override
         protected void onPostExecute(List<Book> data) {
-            // Clear the adapter of previous earthquake data
+            // Clear the adapter of previous book data
             mAdapter.clear();
 
-            // If there is a valid list of {@link Earthquake}s, then add them to the adapter's
+            // If there is a valid list of {@link Book}s, then add them to the adapter's
             // data set. This will trigger the ListView to update.
             if (data != null && !data.isEmpty()) {
                 mAdapter.addAll(data);
+                LinearLayout linearLayout = (LinearLayout) findViewById(R.id.linear_layout);
+                linearLayout.setVisibility(View.GONE);
+            } else {
+                mEmptyStateTextView.setText("No Books Available");
             }
         }
+
 
         /**
          * Returns new URL object from the given string URL.
@@ -128,7 +159,7 @@ public class MainActivity extends AppCompatActivity {
          */
         private String makeHttpRequest(URL url) throws IOException {
             String jsonResponse = "";
-            if(url==null){
+            if (url == null) {
                 return jsonResponse;
             }
             HttpURLConnection urlConnection = null;
@@ -139,16 +170,16 @@ public class MainActivity extends AppCompatActivity {
                 urlConnection.setReadTimeout(30000 /* milliseconds */);
                 urlConnection.setConnectTimeout(45000 /* milliseconds */);
                 urlConnection.connect();
-                if(urlConnection.getResponseCode()==200){
+                if (urlConnection.getResponseCode() == 200) {
                     inputStream = urlConnection.getInputStream();
                     jsonResponse = readFromStream(inputStream);
-                }else {
-                    Log.e(LOG_TAG,"Error Response Code :" + urlConnection.getResponseCode());
+                } else {
+                    Log.e(LOG_TAG, "Error Response Code :" + urlConnection.getResponseCode());
                 }
 
             } catch (IOException e) {
                 // TODO: Handle the exception
-                Log.e(LOG_TAG,"Problem Retrieving JSON results",e);
+                Log.e(LOG_TAG, "Problem Retrieving JSON results", e);
             } finally {
                 if (urlConnection != null) {
                     urlConnection.disconnect();
@@ -185,7 +216,7 @@ public class MainActivity extends AppCompatActivity {
          * about the query book from the input bookJSON string.
          */
         private List<Book> extractBookFromJson(String bookJSON) {
-            if(bookJSON.isEmpty()){
+            if (bookJSON.isEmpty()) {
                 return null;
             }
 
@@ -194,15 +225,22 @@ public class MainActivity extends AppCompatActivity {
             try {
                 JSONObject rootObject = new JSONObject(bookJSON);
                 JSONArray items = rootObject.getJSONArray("items");
-                for(int i= 0; i<items.length(); i++)
-                {
+                for (int i = 0; i < items.length(); i++) {
                     JSONObject object = items.getJSONObject(i);
                     JSONObject details = object.getJSONObject("volumeInfo");
                     String title = details.getString("title");
-                    JSONArray authorsArray = details.getJSONArray("authors");
-                    String author = authorsArray.getString(0);
+                    String authors = "";
+                    JSONArray authorsArray;
+                    if (details.has("authors")) {
+                        authorsArray = details.getJSONArray("authors");
+                        for (int j = 0; j < authorsArray.length(); j++) {
+                            authors += "," + authorsArray.getString(j);
+                        }
+                    } else {
+                        authors = "No author";
+                    }
                     // Create a new {@link Book} object
-                    Book book = new Book(title,author);
+                    Book book = new Book(title, authors);
                     books.add(book);
                 }
 
